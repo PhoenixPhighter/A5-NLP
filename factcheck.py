@@ -82,8 +82,25 @@ class AlwaysEntailedFactChecker(FactChecker):
 
 
 class WordRecallThresholdFactChecker(FactChecker):
+    punc = '''!()-[]{};:'"\,<>./?@#$%^&*_~'''
+
     def predict(self, fact: str, passages: List[dict]) -> str:
-        raise Exception("Implement me")
+        A, B = set(), set()
+        for word in fact.split():
+            for ele in word:
+                if ele in self.punc:
+                    word = word.replace(ele, "")
+            if word.isalnum():
+                A.add(word.lower())
+        for p in passages:
+            for word in p["text"].split():
+                for ele in word:
+                    if ele in self.punc:
+                        word = word.replace(ele, "")
+                if word.isalnum():
+                    B.add(word.lower())
+        recall = len(A.intersection(B)) / len(A)
+        return "S" if recall > .75 else "NS"
 
 
 class EntailmentFactChecker(FactChecker):
