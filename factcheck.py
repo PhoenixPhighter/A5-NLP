@@ -110,7 +110,7 @@ class WordRecallThresholdFactChecker(FactChecker):
             if word.isalnum():
                 B.add(word.lower())
         recall = len(A.intersection(B)) / len(A)
-        return "S" if recall > .2 else "NS"
+        return "S" if recall > .125 else "NS"
 
 
 class EntailmentFactChecker(FactChecker):
@@ -120,14 +120,14 @@ class EntailmentFactChecker(FactChecker):
 
     def predict(self, fact: str, passages: List[dict]) -> str:
         
-        if self.word_overlap.predict(fact, passages, entailment=True) == "NS":
-            return "NS"
-
         for p in passages:
             for sentence in p["text"].split("."):
                 pruned_text = sentence
                 pruned_text = pruned_text.replace("<s>", "")
+                pruned_text = pruned_text.replace("</s>", "")
                 pruned_fact = fact
+                if self.word_overlap.predict_sentence(pruned_fact, pruned_text) == "NS":
+                    continue
                 if self.ent_model.check_entailment(pruned_text, pruned_fact) == 1:
                     return "S"
         return "NS"
