@@ -34,30 +34,18 @@ class EntailmentModel(object):
 
     def check_entailment(self, premise: str, hypothesis: str):
         with torch.no_grad():
-            # Tokenize the premise and hypothesis
             inputs = self.tokenizer(premise, hypothesis, return_tensors='pt', truncation=True, padding=True)
             if self.cuda:
                 inputs = {key: value.to('cuda') for key, value in inputs.items()}
-            # Get the model's prediction
             outputs = self.model(**inputs)
             logits = outputs.logits
 
-        # Note that the labels are ["entailment", "neutral", "contradiction"]. There are a number of ways to map
-        # these logits or probabilities to classification decisions; you'll have to decide how you want to do this.
-        
-        # probs = torch.nn.functional.softmax(logits, dim=1)
-        # prediction = torch.argmax(probs, dim=1)
-        # label = self.model.config.id2label[prediction.item()]
         probs = torch.nn.functional.softmax(logits, dim=1)
 
-        # To prevent out-of-memory (OOM) issues during autograding, we explicitly delete
-        # objects inputs, outputs, logits, and any results that are no longer needed after the computation.
-        # entailed = 1 if logits[0][0] > 0 else 0
         del inputs, outputs, logits
         gc.collect()
 
-        # return something
-        return probs[0][0] > .25
+        return probs[0][0] > .4
 
 
 class FactChecker(object):
@@ -106,49 +94,42 @@ class WordRecallThresholdFactChecker(FactChecker):
                     B.add(word.lower())
         recall = len(A.intersection(B)) / len(A)
         return "S" if recall > .75 else "NS"
+        
+    def predict_sentence(self, fact: str, sentence: str) -> str:
+        A, B = set(), set()
+        for word in fact.split():
+            for ele in word:
+                if ele in self.punc:
+                    word = word.replace(ele, "")
+            if word.isalnum():
+                A.add(word.lower())
+        for word in sentence.split():
+            for ele in word:
+                if ele in self.punc:
+                    word = word.replace(ele, "")
+            if word.isalnum():
+                B.add(word.lower())
+        recall = len(A.intersection(B)) / len(A)
+        return "S" if recall > .2 else "NS"
 
 
 class EntailmentFactChecker(FactChecker):
     def __init__(self, ent_model):
         self.ent_model = ent_model
-        self.punc = '''!()-[]{};:'"\,<>./?@#$%^&*_~'''
         self.word_overlap = WordRecallThresholdFactChecker()
 
     def predict(self, fact: str, passages: List[dict]) -> str:
-        # total, entails, neutrals, contradicts = 0, 0, 0, 0
-        # for p in passages:
-        #     total += 1
-        #     label = self.ent_model.check_entailment(p["text"], fact"])
-        #     if label == "entailment":
-        #         entails += 1
-        #     elif label == "neutral":
-        #         neutrals += 1
-        #     else:
-        #         contradicts += 1
-        # if entails > 0:
-        #     return "S"
-        # else:
-        #     return "NS"
-        if self.word_overlap.predict(fact, passages) == "NS":
+        
+        if self.word_overlap.predict(fact, passages, entailment=True) == "NS":
             return "NS"
 
-        total, entailed = 0, 0
         for p in passages:
             for sentence in p["text"].split("."):
                 pruned_text = sentence
                 pruned_text = pruned_text.replace("<s>", "")
-                # for ele in pruned_text:
-                #     if ele in self.punc:
-                #         pruned_text = pruned_text.replace(ele, "")
                 pruned_fact = fact
-                # for ele in pruned_fact:
-                #     if ele in self.punc:
-                #         pruned_fact = pruned_fact.replace(ele, "")
                 if self.ent_model.check_entailment(pruned_text, pruned_fact) == 1:
                     return "S"
-                # entailed += 1
-            # total += 1
-        # return "S" if float(entailed) / float(total) > .01 else "NS"
         return "NS"
 
 
